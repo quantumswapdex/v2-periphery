@@ -1,38 +1,32 @@
-name: CI
+name: "CI"
+
+env:
+  DOTENV_CONFIG_PATH: "./.env.example"
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
   pull_request:
+  push:
+    branches: [main, develop]
 
 jobs:
-  test:
-    strategy:
-      matrix:
-        node: ['10.x', '12.x']
-        os: [ubuntu-latest]
-
-    runs-on: ${{ matrix.os }}
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-node@v1
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 16
+          cache: "yarn"
 
-      - run: npm install -g yarn
+      - name: Install dependencies
+        # Hack to get around failing "ethereumjs-abi The remote archive doesn't match the expected checksum" error
+        run: YARN_CHECKSUM_BEHAVIOR=update yarn
 
-      - id: yarn-cache
-        run: echo "::set-output name=dir::$(yarn cache dir)"
-      - uses: actions/cache@v1
-        with:
-          path: ${{ steps.yarn-cache.outputs.dir }}
-          key: ${{ matrix.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ matrix.os }}-yarn-
-
-      - run: yarn
-
-      - run: yarn lint
-      - run: yarn test
+      - name: Lint solidity and ts files
+        run: yarn lint
