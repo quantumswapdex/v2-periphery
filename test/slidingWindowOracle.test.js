@@ -63,10 +63,24 @@ test("observationIndexOf", async () => {
 test("update records an observation for the current epoch period", async () => {
   const { token0, token1, pair } = fixture;
   const receipt = await send(oracle.update(token0.target, token1.target, overrides));
+  // QuantumCoin executes a block's transactions with block.timestamp = parent header time + the
+  // block period. That is earlier than the block's own header time whenever the block is late, so
+  // the stored timestamp is bounded by the two headers rather than equal to the containing one,
+  // and its slot can differ from observationIndexOf(header time).
   const block = await provider.getBlock(receipt.blockNumber);
-  const index = BigInt(scalar(await oracle.observationIndexOf(BigInt(block.timestamp))));
-  const observation = await oracle.pairObservations(pair.target, index);
-  assert.equal(BigInt(observation[0]), BigInt(block.timestamp), "observation timestamp");
+  const parent = await provider.getBlock(Number(receipt.blockNumber) - 1);
+  let index;
+  let observation;
+  for (let i = 0n; i < GRANULARITY; i++) {
+    const candidate = await oracle.pairObservations(pair.target, i);
+    const ts = BigInt(candidate[0]);
+    if (ts > BigInt(parent.timestamp) && ts <= BigInt(block.timestamp)) {
+      index = i;
+      observation = candidate;
+    }
+  }
+  assert.ok(observation, "observation timestamp within the update's block");
+  assert.equal(BigInt(scalar(await oracle.observationIndexOf(BigInt(observation[0])))), index, "observation slot");
 
   // a second update within the same period must not overwrite the observation
   await send(oracle.update(token0.target, token1.target, overrides));
